@@ -1,0 +1,274 @@
+from operator import mod
+from numpy import *
+from Crypto.Cipher import AES
+from binascii import b2a_hex, a2b_hex
+from scipy.misc import imread
+from skimage import io,data
+class prpcrypt():
+    def __init__(self, key):
+        self.key = key
+        self.mode = AES.MODE_CBC
+
+    # 加密函数，如果text不足16位就用空格补足为16位，
+    # 如果大于16当时不是16的倍数，那就补足为16的倍数。
+    def encrypt(self, text):
+        cryptor = AES.new(self.key, self.mode, b'0000000000000000')
+        # 这里密钥key 长度必须为16（AES-128）,
+        # 24（AES-192）,或者32 （AES-256）Bytes 长度
+        # 目前AES-128 足够目前使用
+        length = 16
+        count = len(text)
+        if count < length:
+            add = (length - count)
+            # \0 backspace
+            text = text + (b'\0' * add)
+        elif count > length:
+            add = (length - (count % length))
+            text = text + (b'\0' * add)
+        self.ciphertext = cryptor.encrypt(text)
+        # 因为AES加密时候得到的字符串不一定是ascii字符集的，输出到终端或者保存时候可能存在问题
+        # 所以这里统一把加密后的字符串转化为16进制字符串
+        return b2a_hex(self.ciphertext)
+
+    # 解密后，去掉补足的空格用strip() 去掉
+    def decrypt(self, text):
+        cryptor = AES.new(self.key, self.mode, b'0000000000000000')
+        plain_text = cryptor.decrypt(a2b_hex(text))
+        return plain_text.rstrip(b'\0')
+
+
+class Point:
+    def __init__(self, a, b):
+        self.x = a
+        self.y = b
+
+
+def RNG(PK, a, Y, G, pr):
+    SK = PK
+    # A = Point()
+    Z = []
+    for i in range(0, a):
+        # A.x = SK*G.x
+        # A.y = SK*G.y
+        A = Point(SK*G.x, SK*G.y)
+        B = MUL(A, Y, pr)
+        C = MUL(B, G, pr)
+        Z.append(floor(abs(A.x * B.x * C.x)))
+        SK = A.y + B.y + C.y
+    return Z
+
+
+def MUL(A, B, PR):
+    pr = PR
+    k = mod(((B.y - A.y) / (B.x - A.x)), pr)
+    X = mod((k * k - A.x - B.x), pr)
+    Y = mod((k * (A.x - X) - A.y), pr)
+    R = Point(X, Y)
+    return R
+
+
+# 传进来的时候就是一维数组
+def matrix2stream(matrix):
+    number = int(len(matrix) / 16)
+    stream = []
+    for i in range(0, number):
+        s = 0;
+        for j in range(0, 15):
+            p = matrix[i * 16 + j]
+            s = s * 256 + p
+        stream.append(s)
+    return stream
+
+
+def reshape(matrix, length, width):
+    result = []
+    for i in range(0, length):
+        for j in range(0, width):
+            row = matrix[i]
+            pixel = row[j]
+            result.append(pixel)
+    return result
+
+
+def div(num1, num2):
+    str_num1 = str(num1)
+    length = len(str_num1)
+    result = 0
+    middle = 0
+    for i in range (0 , length):
+        middle = middle * 10 + int(str_num1[i])
+        result = result * 10 + middle // num2
+        middle = middle % num2
+    return result
+
+
+def combinePixel(pixel, p_red, p_green, p_blue):
+    pixel.append(p_red)
+    pixel.append(p_green)
+    pixel.append(p_blue)
+    return pixel
+
+
+def combineChannels(C_red, C_green, C_blue, length, width):
+    x = 0; y = 0;
+    cipherImg = []
+    row = []
+    for i in range (0, len(C_red)):
+        red = C_red[i]
+        green = C_green[i]
+        blue = C_blue[i]
+        j = 16
+        while j > 0:
+            p_red = mod(red, 256)
+            p_green = mod(green, 256)
+            p_blue = mod(blue, 256)
+            pixel = combinePixel(pixel, p_red, p_green, p_blue)
+            row.append(pixel)
+            y = y + 1
+            if y % width == 0:
+                x = x + 1
+                y = 0
+                cipherImg.append(row)
+                row = []
+            red = div(red, 256)
+            green = div(red, 256)
+            blue = div(blue, 256)
+            j = j - 1
+    return cipherImg
+
+
+def long_bitor(stream1, stream2):
+    # print("number:    " + str(number))
+    print(int(stream2))
+    print(type(stream2[0]))
+    s1 = stream1
+    s2 = stream2
+    result = 0
+    j = 16
+    while j > 0:
+        seg1 = int(mod(s1, 256))
+        seg2 = s2[j-1]
+        seg = seg1 | seg2
+        result = result * 256 + seg
+        s1 = div(s1, 256)
+        # s2 = div(s2, 256)
+        j = j - 1
+    return result
+
+
+def long_bitor2(stream1, stream2):
+    # print("number:    " + str(number))
+    # print(int(stream2))
+    # print(type(stream2[0]))
+    s1 = stream1
+    s2 = stream2
+    result = 0
+    j = 16
+    while j > 0:
+        seg1 = s1[j - 1]
+        seg2 = s2[j - 1]
+        seg = seg1 | seg2
+        result = result * 256 + seg
+        # s1 = div(s1, 256)
+        # s2 = div(s2, 256)
+        j = j - 1
+    return result
+def imageEncryption(Mtrix_red, Mtrix_blue, Mtrix_green,Mr, Mg, Mb,FC_red,FC_grn, FC_ble, FC_key, alpha):
+    stream_red = matrix2stream(Mtrix_red)
+    stream_blue = matrix2stream(Mtrix_blue)
+    stream_green = matrix2stream(Mtrix_green)
+    imgSize = len(Mtrix_red)
+    C_red = []
+    C_green = []
+    C_blue = []
+    number = alpha
+    for i in range(0, int(imgSize / 16)):
+        C_red.append(long_bitor(long_bitor(stream_red[i], FC_red), Mr[mod(i, number)]))
+        C_green.append(long_bitor(long_bitor(stream_green[i], FC_grn), Mg[mod(i, number)]))
+        C_blue.append(long_bitor(long_bitor(stream_blue[i], FC_ble), Mb[mod(i, number)]))
+        if i % number == 0:
+            key = getKeys(FC_ble)
+            pc = prpcrypt(key)
+            FC_red = pc.encrypt(num2bin(FC_key))
+            FC_grn = long_bitor2(FC_grn, FC_red)
+            FC_ble = long_bitor2(FC_ble, FC_grn)
+    ciptherImg = combineChannels(C_red, C_green, C_blue, length, width)
+    return ciptherImg
+
+
+def num2bin(num):
+    num = int(num)
+    str = bin(num).replace('0b', '')
+    b = bytes(str, encoding="utf8")
+    return b
+
+
+# def bin2num(binary):
+#     num = int(str(binary, encoding="utf-8"))
+#     return num
+
+
+# def arr2list(arrImg):
+#     rows, cols, m = arrImg.shape
+#     arr = list(arrImg)
+#     for i in range(0, cols -1):
+#         arr[i] = list(arr[i])
+#         col = arr[i]
+#         for j in range(0, 3):
+#              col[j] = list()
+#     return arr
+
+
+def getKeys(number):
+    b = bytes(str(number), encoding="utf8")
+    keys = b[len(b) - 17:len(b) - 1]
+    return keys
+
+
+def img2mtrix(matrix, img, number, length, width):
+    for i in range(0, length):
+        row = img[i]
+        for j in range(0, width):
+            pixel = row[j]
+            matrix.append(pixel[number - 1])
+    return matrix
+
+
+if __name__=='__main__':
+    # primarykey = 88962710306127702866241727433142015
+    primarykey = 44488
+    alpha = 128
+    Y = Point(1, 5)
+    G = Point(3, 1)
+    Z = RNG(primarykey, alpha, Y, G, 29)
+    MR = []
+    MG = []
+    MB = []
+    pc = prpcrypt(num2bin(primarykey))
+    for i in range(0, alpha):
+        print(pc.encrypt((num2bin(Z[i]))))
+        MR.append(pc.encrypt(num2bin(Z[i])))
+        MG.append(pc.encrypt(MR[i]))
+        MB.append(pc.encrypt(MG[i]))
+    IV = mod(primarykey, alpha)
+    FCkey = Z[IV]
+    FCred = MR[IV]
+    FCgrn = MG[IV]
+    FCble = MB[IV]
+    del(Z[IV])
+    del(MR[IV])
+    del(MG[IV])
+    del(MB[IV])
+    arr_sourceImg = imread("D:\len_std.jpg")
+    sourceImg = arr_sourceImg.tolist();
+    print(type(sourceImg))
+    length = (len(sourceImg))
+    width = (len(sourceImg[0]))
+    matrix_red = []
+    matrix_green = []
+    matrix_blue = []
+    matrix_red = img2mtrix(matrix_red, sourceImg, 1, length, width)
+    matrix_green = img2mtrix(matrix_green, sourceImg, 2, length, width)
+    matrix_blue = img2mtrix(matrix_blue, sourceImg, 3, length, width)
+    cipherImg = tuple(imageEncryption(matrix_red, matrix_green, matrix_blue, MR, MG, MB, FCred, FCgrn, FCble, FCkey, alpha))
+    io.imsave(cipherImg, 'D:\encrypted1.jpg')
