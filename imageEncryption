@@ -24,16 +24,18 @@ class Point:
         self.isInfinite = False
 
 
-def RNG(PK, a, Y, G, pr):
+def RNG(PK, a, Y, G):
     SK = PK
     # A = Point()
     Z = []
+    pr = 3989
     eccGroup = computeEccOrder()
     n = len(eccGroup)
     for i in range(0, a):
         # A.x = SK*G.x
         # A.y = SK*G.y
-        m = int(mod(SK, pr - 1))
+        m = int(mod(SK, n - 1))
+        print(m)
         A = eccGroup[m]
         B = MUL(A, Y, pr)
         C = MUL(B, G, pr)
@@ -47,14 +49,14 @@ def computeEccOrder():
     pointGroup = []
     a = 2
     b = 3
-    pr = 1099511627689
+    pr = 3989
     G = Point(3,6)
     n = 1
     while 1:
         result = double_and_add(n, G, a, b, pr)
         pointGroup.append(result)
+        n = n + 1
         if result.isInfinite:
-            n = n + 1
             break
     return pointGroup
 
@@ -103,8 +105,8 @@ def double_add(a, b, pr, P):
     x = P.x
     y = P.y
     lamda = int(mod((3 * (x * x) + a) / (2 * y), pr))
-    m = mod(lamda * lamda - 2 * x, pr)
-    n = mod(y + lamda * (m - x), pr)
+    m = int(mod(lamda * lamda - 2 * x, pr))
+    n = int(mod(y + lamda * (m - x), pr))
     R = Point(m, n)
     if P.y == 0:
         R.isInfinite = True
@@ -117,8 +119,8 @@ def add(pr, P, Q):
     if Q.isInfinite:
         return P
     lamda = int(mod((P.y - Q.y) / (P.x - Q.x), pr))
-    x = mod((lamda *lamda - P.x - Q.x), pr)
-    y = mod((P.y + lamda * (x - P.x)),pr)
+    x = int(mod((lamda *lamda - P.x - Q.x), pr))
+    y = int(mod((P.y + lamda * (x - P.x)),pr))
     R = Point(x, y)
     if (-P.y) % pr == Q.y:
         R.isInfinite = True
@@ -132,13 +134,18 @@ def bits(n):
 
 
 def double_and_add(n, G, a, b, pr):
+    if n == 1:
+        return G
     isFirst = True
     result = G
     addend = G
     for bit in bits(n):
-        if (bit == 1) and (not isFirst):
-            result = add(pr, result, G)
-            isFirst = not isFirst
+        if (bit == 1):
+            if isFirst:
+                result = addend
+                isFirst = False
+            else:
+                result = add(pr, result, addend)
         addend = double_add(a, b, pr, addend)
     return result
 
@@ -296,9 +303,9 @@ def img2mtrix(matrix, img, number, length, width):
 if __name__=='__main__':
     primarykey = 88962710306127702866241727433142015
     alpha = 128
-    Y = Point(1, 5)
-    G = Point(13, 23)
-    Z = RNG(primarykey, alpha, Y, G, 29)
+    Y = Point(1041, 1242)
+    G = Point(3, 6)
+    Z = RNG(primarykey, alpha, Y, G)
     MR = []
     MG = []
     MB = []
