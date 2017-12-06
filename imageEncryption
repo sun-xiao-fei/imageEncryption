@@ -233,25 +233,6 @@ def long_bitor(stream1, stream2):
     return result
 
 
-# def long_bitor2(stream1, stream2):
-#     # print("number:    " + str(number))
-#     # print(int(stream2))
-#     # print(type(stream2[0]))
-#     s1 = stream1
-#     s2 = stream2
-#     result = 0
-#     j = 16
-#     while j > 0:
-#         seg1 = s1[j - 1]
-#         seg2 = s2[j - 1]
-#         seg = seg1 | seg2
-#         result = result * 256 + seg
-#         # s1 = div(s1, 256)
-#         # s2 = div(s2, 256)
-#         j = j - 1
-#     return result
-
-
 def imageEncryption(Mtrix_red, Mtrix_blue, Mtrix_green,Mr, Mg, Mb,FC_red,FC_grn, FC_ble, FC_key, alpha):
     stream_red = matrix2stream(Mtrix_red)
     stream_blue = matrix2stream(Mtrix_blue)
